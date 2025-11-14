@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx - UPDATED WITH DEBUGGING
+// src/context/AuthContext.jsx - COMPLETE UPDATED VERSION
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { 
   signInWithEmailAndPassword, 
@@ -38,9 +38,37 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [backendAvailable, setBackendAvailable] = useState(true);
 
   // Backend base URL
   const BACKEND_URL = 'https://career-guidance-application-backend.onrender.com';
+
+  // Enhanced backend connection test
+  const testBackendConnection = async () => {
+    try {
+      console.log('🔍 Testing backend connection...');
+      const response = await axios.get(`${BACKEND_URL}/api/health`, { 
+        timeout: 8000,
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      console.log('✅ Backend connection successful:', response.data);
+      setBackendAvailable(true);
+      return true;
+    } catch (error) {
+      console.error('❌ Backend connection failed:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        url: `${BACKEND_URL}/api/health`
+      });
+      
+      setBackendAvailable(false);
+      return false;
+    }
+  };
 
   // Get institutions for registration dropdown
   const getInstitutionsForRegistration = async () => {
@@ -57,7 +85,7 @@ export const AuthProvider = ({ children }) => {
         ...doc.data()
       }));
       
-      console.log('✅ Institutions from Firestore:', institutions);
+      console.log('✅ Institutions from Firestore:', institutions.length);
       return institutions;
     } catch (error) {
       console.error('❌ Error fetching institutions:', error);
@@ -82,13 +110,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Helper to make authenticated API calls
+  // Helper to make authenticated API calls with CORS handling
   const authApiCall = async (method, url, data = null) => {
     const headers = await getAuthHeaders();
     const config = {
       method,
       url: `${BACKEND_URL}${url}`,
       headers,
+      timeout: 15000,
+      withCredentials: true,
       ...(data && { data })
     };
     
@@ -96,25 +126,29 @@ export const AuthProvider = ({ children }) => {
       const response = await axios(config);
       return response.data;
     } catch (error) {
-      console.error(`❌ API ${method} ${url} failed:`, error);
+      console.error(`❌ API ${method} ${url} failed:`, {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      
+      // Handle CORS errors specifically
+      if (error.message.includes('Network Error') || error.message.includes('CORS')) {
+        throw new Error('Cannot connect to server. Please check your connection.');
+      }
+      
       throw error;
     }
   };
 
-  // Test backend connection
-  const testBackendConnection = async () => {
-    try {
-      console.log('🔍 Testing backend connection...');
-      const response = await axios.get(`${BACKEND_URL}/api/health`, { 
-        timeout: 5000 
-      });
-      console.log('✅ Backend connection successful:', response.data);
-      return true;
-    } catch (error) {
-      console.error('❌ Backend connection failed:', error.message);
-      return false;
-    }
-  };
+  useEffect(() => {
+    const initializeAuth = async () => {
+      // Test backend connection on startup
+      await testBackendConnection();
+    };
+
+    initializeAuth();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -131,33 +165,29 @@ export const AuthProvider = ({ children }) => {
           const idToken = await firebaseUser.getIdToken();
           console.log('🔑 ID Token obtained for:', firebaseUser.email);
           
-          // First, check if backend is available
-          const backendAvailable = await testBackendConnection();
-          
+          // Check if backend is available
           if (!backendAvailable) {
             console.warn('⚠️ Backend unavailable, using Firebase-only mode');
             // Create basic user from Firebase data
-            setUser({
+            const basicUser = {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
               emailVerified: firebaseUser.emailVerified,
-              role: 'user',
+              role: 'user', // Default role
               profile: {
                 firstName: 'User',
                 lastName: ''
-              }
-            });
+              },
+              isFirebaseOnly: true
+            };
+            setUser(basicUser);
             setError('Backend service temporarily unavailable. Some features may be limited.');
             setLoading(false);
             return;
           }
           
-          // Try to login with backend - ADDED DEBUGGING
+          // Try to login with backend
           console.log('🔄 Attempting backend login...');
-          console.log('🔍 Request URL:', `${BACKEND_URL}/api/auth/login`);
-          console.log('🔍 Request method: POST');
-          console.log('🔍 Request payload:', { idToken: idToken ? 'PRESENT' : 'MISSING' });
-          
           const response = await axios.post(
             `${BACKEND_URL}/api/auth/login`, 
             { idToken }, 
@@ -169,7 +199,7 @@ export const AuthProvider = ({ children }) => {
             }
           );
           
-          console.log('✅ Backend login successful:', response.data.user);
+          console.log('✅ Backend login successful:', response.data.user.role);
           setUser(response.data.user);
           setError('');
         } catch (error) {
@@ -181,20 +211,32 @@ export const AuthProvider = ({ children }) => {
           
           // Handle specific error cases
           if (error.response?.status === 404) {
-            // User profile doesn't exist in Firestore yet
+            // User profile doesn't exist in backend yet
             console.log('📝 User profile not found, needs registration completion');
             setError('Account created but profile not found. Please complete registration or contact support.');
             setUser(null);
             
-            // Auto-sign out user if they don't have a Firestore profile
-            console.log('👋 Auto-signing out user without Firestore profile...');
+            // Auto-sign out user if they don't have a backend profile
+            console.log('👋 Auto-signing out user without backend profile...');
             await signOut(auth);
           } else if (error.response?.data?.needsVerification) {
             setError('Please verify your email before logging in.');
             setUser(null);
           } else if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
-            setError('Cannot connect to server. Please check your connection and try again.');
-            setUser(null);
+            console.warn('🌐 Backend connection failed, using Firebase-only mode');
+            const basicUser = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              emailVerified: firebaseUser.emailVerified,
+              role: 'user',
+              profile: {
+                firstName: 'User',
+                lastName: ''
+              },
+              isFirebaseOnly: true
+            };
+            setUser(basicUser);
+            setError('Backend service temporarily unavailable. Some features may be limited.');
           } else {
             setError('Authentication failed. Please try logging in again.');
             setUser(null);
@@ -208,9 +250,9 @@ export const AuthProvider = ({ children }) => {
     });
 
     return unsubscribe;
-  }, [isRegistering]);
+  }, [isRegistering, backendAvailable]);
 
-  // Updated login function with enhanced debugging
+  // Enhanced login function with better error handling
   const login = async (email, password, expectedRole = null) => {
     try {
       setError('');
@@ -226,17 +268,25 @@ export const AuthProvider = ({ children }) => {
       console.log('🔑 ID Token obtained');
       
       // 3. Check backend health first
-      const backendAvailable = await testBackendConnection();
       if (!backendAvailable) {
-        throw new Error('Backend service temporarily unavailable. Please try again later.');
+        console.warn('⚠️ Backend unavailable, proceeding with Firebase-only authentication');
+        const basicUser = {
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+          emailVerified: userCredential.user.emailVerified,
+          role: expectedRole || 'user',
+          profile: {
+            firstName: 'User',
+            lastName: ''
+          },
+          isFirebaseOnly: true
+        };
+        setUser(basicUser);
+        return { user: basicUser, isFirebaseOnly: true };
       }
       
-      // 4. Login with backend - ENHANCED DEBUGGING
+      // 4. Login with backend
       console.log('🔄 Sending login request to backend...');
-      console.log('🔍 Request URL:', `${BACKEND_URL}/api/auth/login`);
-      console.log('🔍 Request method: POST');
-      console.log('🔍 Request payload:', { idToken: idToken.substring(0, 20) + '...' });
-      
       const response = await axios.post(
         `${BACKEND_URL}/api/auth/login`, 
         { idToken }, 
@@ -265,17 +315,13 @@ export const AuthProvider = ({ children }) => {
       }
       
       setUser(userData);
-      return userCredential;
+      return { user: userData, isFirebaseOnly: false };
     } catch (error) {
       console.error('❌ Login error details:', {
         code: error.code,
         message: error.message,
         status: error.response?.status,
-        data: error.response?.data,
-        config: {
-          method: error.config?.method,
-          url: error.config?.url
-        }
+        data: error.response?.data
       });
       
       let errorMessage = 'Login failed. Please try again.';
@@ -415,7 +461,6 @@ export const AuthProvider = ({ children }) => {
       console.log('📝 Creating user profile in backend...', profileData);
 
       // 6. Check backend connection before creating profile
-      const backendAvailable = await testBackendConnection();
       if (!backendAvailable) {
         throw new Error('Backend service unavailable. Please try again later.');
       }
@@ -582,6 +627,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     error,
     authLoading,
+    backendAvailable,
     
     // Actions
     login, // Generic login
@@ -601,7 +647,8 @@ export const AuthProvider = ({ children }) => {
     authApiCall,
     getInstitutionsForRegistration,
     getDashboardPath,
-    testBackendConnection // Added for debugging
+    testBackendConnection,
+    setBackendAvailable
   };
 
   return (
@@ -611,4 +658,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export default AuthContext; 
+export default AuthContext;
