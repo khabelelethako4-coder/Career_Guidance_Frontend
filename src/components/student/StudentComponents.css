@@ -1,0 +1,478 @@
+/* src/components/student/StudentComponents.css */
+
+/* Admission Selection Styles */
+.admission-selection .alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid;
+}
+
+.admission-selection .alert-info {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+.admission-selection .alert-warning {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.admission-selection .alert svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.admission-selection .alert-content {
+  flex: 1;
+}
+
+.admission-selection .alert-content strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.admission-selection .alert-content p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* Card Header with Icon */
+.admission-selection .card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #d1fae5;
+  background: #ecfdf5;
+}
+
+.admission-selection .card-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #0f766e;
+  margin: 0;
+}
+
+.admission-selection .card-header svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: #0d9488;
+}
+
+/* Admissions Grid */
+.admission-selection .admissions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.admission-selection .admission-card {
+  border: 1px solid #d1fae5;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  background: white;
+  transition: all 0.3s;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admission-selection .admission-card:hover {
+  border-color: #5eead4;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.1);
+}
+
+.admission-selection .admission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.admission-selection .admission-header h4 {
+  color: #0f766e;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.3;
+  flex: 1;
+}
+
+.admission-selection .badge-success {
+  background: #d1fae5;
+  color: #065f46;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid #a7f3d0;
+  white-space: nowrap;
+}
+
+.admission-selection .admission-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.admission-selection .admission-details p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.admission-selection .admission-details strong {
+  color: #0f766e;
+  font-weight: 500;
+}
+
+.admission-selection .admission-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.5rem;
+  border-top: 1px solid #f0fdfa;
+}
+
+/* Admission Note */
+.admission-selection .admission-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 0.5rem;
+  border-left: 3px solid #0d9488;
+}
+
+.admission-selection .admission-note svg {
+  width: 1rem;
+  height: 1rem;
+  color: #0d9488;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.admission-selection .admission-note p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+/* Loading State */
+.admission-selection .loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #6b7280;
+  text-align: center;
+}
+
+.admission-selection .spinner-small {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid #d1fae5;
+  border-top: 2px solid #0d9488;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 0.75rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .admission-selection .admissions-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .admission-selection .admission-card {
+    padding: 1.25rem;
+  }
+  
+  .admission-selection .admission-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .admission-selection .card-header {
+    padding: 1rem 1.25rem;
+  }
+  
+  .admission-selection .card-header h3 {
+    font-size: 1.125rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .admission-selection .alert {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.5rem;
+  }
+  
+  .admission-selection .admission-note {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .admission-selection .admission-actions {
+    justify-content: stretch;
+  }
+  
+  .admission-selection .admission-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Qualified Course Application Styles */
+.qualified-course-application .loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #6b7280;
+  text-align: center;
+}
+
+.qualified-course-application .spinner-small {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid #d1fae5;
+  border-top: 2px solid #0d9488;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 0.75rem;
+}
+
+.qualified-course-application .alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid;
+}
+
+.qualified-course-application .alert-error {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.qualified-course-application .alert svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.qualified-course-application .alert p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* Qualification Check Container */
+.qualified-course-application .qualification-check {
+  border: 1px solid #d1fae5;
+  border-radius: 0.75rem;
+  background: white;
+  overflow: hidden;
+}
+
+.qualified-course-application .qualification-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #d1fae5;
+  background: #ecfdf5;
+}
+
+.qualified-course-application .qualification-header h4 {
+  margin: 0;
+  color: #0f766e;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+/* Qualification Results */
+.qualified-course-application .qualification-results {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.qualified-course-application .qualification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid;
+}
+
+.qualified-course-application .qualification-item.qualified {
+  background: #f0fdfa;
+  border-color: #a7f3d0;
+}
+
+.qualified-course-application .qualification-item.not-qualified {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.qualified-course-application .qualification-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.qualified-course-application .qualification-item.qualified .qualification-icon {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.qualified-course-application .qualification-item.not-qualified .qualification-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.qualified-course-application .qualification-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.qualified-course-application .qualification-content {
+  flex: 1;
+}
+
+.qualified-course-application .qualification-content strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.qualified-course-application .qualification-item.qualified .qualification-content strong {
+  color: #065f46;
+}
+
+.qualified-course-application .qualification-item.not-qualified .qualification-content strong {
+  color: #dc2626;
+}
+
+.qualified-course-application .qualification-content p {
+  margin: 0 0 0.5rem 0;
+  color: #4b5563;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+/* Missing Requirements */
+.qualified-course-application .missing-requirements {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0.375rem;
+  border: 1px solid #e5e7eb;
+}
+
+.qualified-course-application .missing-requirements p {
+  margin: 0 0 0.5rem 0;
+  color: #6b7280;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.qualified-course-application .missing-requirements ul {
+  margin: 0;
+  padding-left: 1rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.qualified-course-application .missing-requirements li {
+  margin-bottom: 0.25rem;
+}
+
+/* Application Actions */
+.qualified-course-application .application-actions {
+  padding: 1.5rem;
+  border-top: 1px solid #d1fae5;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.qualified-course-application .application-actions .btn {
+  min-width: 160px;
+  justify-content: center;
+}
+
+.qualified-course-application .application-actions .btn-disabled {
+  background: #9ca3af;
+  border-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.qualified-course-application .application-actions .btn-disabled:hover {
+  background: #9ca3af;
+  border-color: #9ca3af;
+  transform: none;
+}
+
+.qualified-course-application .application-help {
+  margin: 1rem 0 0 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+/* Responsive Design */
+@media (max-width: 640px) {
+  .qualified-course-application .qualification-results {
+    padding: 1rem;
+  }
+  
+  .qualified-course-application .qualification-item {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.75rem;
+  }
+  
+  .qualified-course-application .qualification-icon {
+    align-self: center;
+  }
+  
+  .qualified-course-application .application-actions {
+    padding: 1rem;
+  }
+}
