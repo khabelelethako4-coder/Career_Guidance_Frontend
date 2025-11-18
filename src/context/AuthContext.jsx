@@ -70,6 +70,30 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Test backend endpoints
+  const testBackendEndpoints = async () => {
+    const endpoints = [
+      { method: 'GET', path: '/api/health' },
+      { method: 'POST', path: '/api/auth/login' },
+      { method: 'POST', path: '/api/auth/create-profile' }
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`🔍 Testing ${endpoint.method} ${endpoint.path}...`);
+        const response = await axios({
+          method: endpoint.method,
+          url: `${BACKEND_URL}${endpoint.path}`,
+          timeout: 5000,
+          ...(endpoint.method === 'POST' && { data: { test: true } })
+        });
+        console.log(`✅ ${endpoint.method} ${endpoint.path}:`, response.status);
+      } catch (error) {
+        console.log(`❌ ${endpoint.method} ${endpoint.path}:`, error.response?.status || error.message);
+      }
+    }
+  };
+
   // Get institutions for registration dropdown
   const getInstitutionsForRegistration = async () => {
     try {
@@ -110,11 +134,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Helper to make authenticated API calls with CORS handling
+  // Enhanced helper to make authenticated API calls with CORS handling
   const authApiCall = async (method, url, data = null) => {
     const headers = await getAuthHeaders();
     const config = {
-      method,
+      method: method.toLowerCase(),
       url: `${BACKEND_URL}${url}`,
       headers,
       timeout: 15000,
@@ -123,18 +147,27 @@ export const AuthProvider = ({ children }) => {
     };
     
     try {
+      console.log(`🌐 API ${method} ${url}:`, data ? { ...data, idToken: data.idToken ? '[HIDDEN]' : 'N/A' } : 'No data');
       const response = await axios(config);
+      console.log(`✅ API ${method} ${url} successful:`, response.data);
       return response.data;
     } catch (error) {
       console.error(`❌ API ${method} ${url} failed:`, {
         message: error.message,
         status: error.response?.status,
-        data: error.response?.data
+        data: error.response?.data,
+        method: method,
+        url: url
       });
       
       // Handle CORS errors specifically
       if (error.message.includes('Network Error') || error.message.includes('CORS')) {
         throw new Error('Cannot connect to server. Please check your connection.');
+      }
+      
+      // Handle 404 specifically
+      if (error.response?.status === 404) {
+        throw new Error('Service endpoint not found. Please contact support.');
       }
       
       throw error;
@@ -145,11 +178,17 @@ export const AuthProvider = ({ children }) => {
     const initializeAuth = async () => {
       // Test backend connection on startup
       await testBackendConnection();
+      
+      // Test specific endpoints in development
+      if (process.env.NODE_ENV === 'development') {
+        await testBackendEndpoints();
+      }
     };
 
     initializeAuth();
   }, []);
 
+  // Enhanced auth state change handler
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('🔄 Auth state changed:', firebaseUser ? firebaseUser.email : 'null');
@@ -173,7 +212,7 @@ export const AuthProvider = ({ children }) => {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
               emailVerified: firebaseUser.emailVerified,
-              role: 'user', // Default role
+              role: 'user',
               profile: {
                 firstName: 'User',
                 lastName: ''
@@ -186,21 +225,12 @@ export const AuthProvider = ({ children }) => {
             return;
           }
           
-          // Try to login with backend
+          // Try to login with backend using authApiCall helper
           console.log('🔄 Attempting backend login...');
-          const response = await axios.post(
-            `${BACKEND_URL}/api/auth/login`, 
-            { idToken }, 
-            {
-              timeout: 10000,
-              headers: {
-                'Content-Type': 'application/json'
-              }
-            }
-          );
+          const userData = await authApiCall('POST', '/api/auth/login', { idToken });
           
-          console.log('✅ Backend login successful:', response.data.user.role);
-          setUser(response.data.user);
+          console.log('✅ Backend login successful:', userData.user.role);
+          setUser(userData.user);
           setError('');
         } catch (error) {
           console.error('❌ Auth state error:', {
@@ -285,37 +315,27 @@ export const AuthProvider = ({ children }) => {
         return { user: basicUser, isFirebaseOnly: true };
       }
       
-      // 4. Login with backend
+      // 4. Login with backend using the authApiCall helper
       console.log('🔄 Sending login request to backend...');
-      const response = await axios.post(
-        `${BACKEND_URL}/api/auth/login`, 
-        { idToken }, 
-        {
-          timeout: 10000,
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
+      const userData = await authApiCall('POST', '/api/auth/login', { idToken });
+
       console.log('✅ Backend login response received');
-      const userData = response.data.user;
-      console.log('✅ Backend login successful, user role:', userData.role);
-      
+      console.log('✅ Backend login successful, user role:', userData.user.role);
+
       // Validate role if expectedRole is provided
-      if (expectedRole && userData.role !== expectedRole) {
+      if (expectedRole && userData.user.role !== expectedRole) {
         await signOut(auth);
-        throw new Error(`Please use the ${userData.role} login page to access your account.`);
+        throw new Error(`Please use the ${userData.user.role} login page to access your account.`);
       }
-      
+
       // Check email verification
       if (!userCredential.user.emailVerified) {
         await signOut(auth);
         throw new Error('Please verify your email before logging in. Check your inbox for the verification link.');
       }
-      
-      setUser(userData);
-      return { user: userData, isFirebaseOnly: false };
+
+      setUser(userData.user);
+      return { user: userData.user, isFirebaseOnly: false };
     } catch (error) {
       console.error('❌ Login error details:', {
         code: error.code,
@@ -465,30 +485,23 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Backend service unavailable. Please try again later.');
       }
 
-      // 7. Create user profile in backend
+      // 7. Create user profile in backend using authApiCall
       console.log('🔄 Sending profile creation request to backend...');
-      const response = await axios.post(
-        `${BACKEND_URL}/api/auth/create-profile`, 
-        {
-          uid: user.uid,
-          email: user.email,
-          role,
-          profile: profileData
-        }, 
-        {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 15000
-        }
-      );
+      const response = await authApiCall('POST', '/api/auth/create-profile', {
+        uid: user.uid,
+        email: user.email,
+        role,
+        profile: profileData
+      });
 
-      console.log('✅ Backend profile created:', response.data);
+      console.log('✅ Backend profile created:', response);
 
       // 8. Sign out user to await verification
       console.log('👋 Signing out user...');
       await signOut(auth);
       
       return {
-        ...response.data,
+        ...response,
         uid: user.uid,
         email: user.email,
         emailSent: true,
@@ -536,17 +549,15 @@ export const AuthProvider = ({ children }) => {
       
       console.log('📧 Resending verification email to:', email);
       
-      const response = await axios.post(`${BACKEND_URL}/api/auth/resend-verification`, { 
-        email 
-      });
+      const response = await authApiCall('POST', '/api/auth/resend-verification', { email });
       
-      console.log('✅ Resend verification response:', response.data);
+      console.log('✅ Resend verification response:', response);
       
-      if (response.data.verificationLink) {
-        console.log('🔗 New Verification Link (Development):', response.data.verificationLink);
+      if (response.verificationLink) {
+        console.log('🔗 New Verification Link (Development):', response.verificationLink);
       }
       
-      return response.data;
+      return response;
     } catch (error) {
       console.error('❌ Resend verification error:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Failed to resend verification email.';
@@ -648,6 +659,7 @@ export const AuthProvider = ({ children }) => {
     getInstitutionsForRegistration,
     getDashboardPath,
     testBackendConnection,
+    testBackendEndpoints,
     setBackendAvailable
   };
 
