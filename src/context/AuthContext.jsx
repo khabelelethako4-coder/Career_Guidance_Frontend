@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx - COMPLETE UPDATED VERSION
+// src/context/AuthContext.jsx - COMPLETE UPDATED VERSION WITH FIRESTORE FALLBACK
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { 
   signInWithEmailAndPassword, 
@@ -38,17 +38,17 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  const [backendAvailable, setBackendAvailable] = useState(true);
+  const [backendAvailable, setBackendAvailable] = useState(false); // Start as false
 
   // Backend base URL
   const BACKEND_URL = 'https://career-guidance-application-backend.onrender.com';
 
-  // Enhanced backend connection test
+  // Enhanced backend connection test with better error handling
   const testBackendConnection = async () => {
     try {
       console.log('🔍 Testing backend connection...');
       const response = await axios.get(`${BACKEND_URL}/api/health`, { 
-        timeout: 8000,
+        timeout: 5000,
         headers: {
           'Accept': 'application/json'
         }
@@ -58,39 +58,14 @@ export const AuthProvider = ({ children }) => {
       setBackendAvailable(true);
       return true;
     } catch (error) {
-      console.error('❌ Backend connection failed:', {
+      console.warn('⚠️ Backend connection failed:', {
         message: error.message,
-        code: error.code,
         status: error.response?.status,
         url: `${BACKEND_URL}/api/health`
       });
       
       setBackendAvailable(false);
       return false;
-    }
-  };
-
-  // Test backend endpoints
-  const testBackendEndpoints = async () => {
-    const endpoints = [
-      { method: 'GET', path: '/api/health' },
-      { method: 'POST', path: '/api/auth/login' },
-      { method: 'POST', path: '/api/auth/create-profile' }
-    ];
-    
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`🔍 Testing ${endpoint.method} ${endpoint.path}...`);
-        const response = await axios({
-          method: endpoint.method,
-          url: `${BACKEND_URL}${endpoint.path}`,
-          timeout: 5000,
-          ...(endpoint.method === 'POST' && { data: { test: true } })
-        });
-        console.log(`✅ ${endpoint.method} ${endpoint.path}:`, response.status);
-      } catch (error) {
-        console.log(`❌ ${endpoint.method} ${endpoint.path}:`, error.response?.status || error.message);
-      }
     }
   };
 
@@ -134,14 +109,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Enhanced helper to make authenticated API calls with CORS handling
+  // Helper to make authenticated API calls with CORS handling
   const authApiCall = async (method, url, data = null) => {
     const headers = await getAuthHeaders();
     const config = {
-      method: method.toLowerCase(),
+      method,
       url: `${BACKEND_URL}${url}`,
       headers,
-      timeout: 15000,
+      timeout: 10000,
       withCredentials: true,
       ...(data && { data })
     };
@@ -155,9 +130,7 @@ export const AuthProvider = ({ children }) => {
       console.error(`❌ API ${method} ${url} failed:`, {
         message: error.message,
         status: error.response?.status,
-        data: error.response?.data,
-        method: method,
-        url: url
+        data: error.response?.data
       });
       
       // Handle CORS errors specifically
@@ -165,12 +138,68 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Cannot connect to server. Please check your connection.');
       }
       
-      // Handle 404 specifically
-      if (error.response?.status === 404) {
-        throw new Error('Service endpoint not found. Please contact support.');
+      throw error;
+    }
+  };
+
+  // Create user profile in Firestore (fallback when backend is down)
+  const createFirestoreProfile = async (uid, email, role, profile) => {
+    try {
+      console.log('📝 Creating user profile in Firestore...');
+      
+      const userData = {
+        uid: uid,
+        email: email.trim().toLowerCase(),
+        role: role,
+        profile: {
+          firstName: profile.firstName.trim(),
+          lastName: profile.lastName.trim(),
+          phone: profile.phone?.trim() || '',
+          ...(role === 'student' && {
+            studentId: profile.studentId || '',
+            major: profile.major || ''
+          }),
+          ...(role === 'company' && {
+            companyName: profile.companyName || '',
+            position: profile.position || ''
+          }),
+          ...(role === 'institution' && { 
+            institutionId: profile.institutionId,
+            institutionName: profile.institutionName
+          })
+        },
+        emailVerified: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        isFirebaseOnly: true // Flag to indicate this is a Firebase-only profile
+      };
+
+      await setDoc(doc(db, 'users', uid), userData);
+      console.log('✅ User profile created in Firestore:', userData);
+      
+      return userData;
+    } catch (error) {
+      console.error('❌ Firestore profile creation error:', error);
+      throw new Error('Failed to create user profile in database.');
+    }
+  };
+
+  // Get user from Firestore (fallback when backend is down)
+  const getFirestoreUser = async (uid) => {
+    try {
+      console.log('📚 Fetching user from Firestore...');
+      const userDoc = await getDoc(doc(db, 'users', uid));
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        console.log('✅ User found in Firestore:', userData.email);
+        return userData;
       }
       
-      throw error;
+      return null;
+    } catch (error) {
+      console.error('❌ Firestore user fetch error:', error);
+      return null;
     }
   };
 
@@ -178,17 +207,11 @@ export const AuthProvider = ({ children }) => {
     const initializeAuth = async () => {
       // Test backend connection on startup
       await testBackendConnection();
-      
-      // Test specific endpoints in development
-      if (process.env.NODE_ENV === 'development') {
-        await testBackendEndpoints();
-      }
     };
 
     initializeAuth();
   }, []);
 
-  // Enhanced auth state change handler
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('🔄 Auth state changed:', firebaseUser ? firebaseUser.email : 'null');
@@ -204,69 +227,52 @@ export const AuthProvider = ({ children }) => {
           const idToken = await firebaseUser.getIdToken();
           console.log('🔑 ID Token obtained for:', firebaseUser.email);
           
-          // Check if backend is available
-          if (!backendAvailable) {
-            console.warn('⚠️ Backend unavailable, using Firebase-only mode');
-            // Create basic user from Firebase data
-            const basicUser = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              emailVerified: firebaseUser.emailVerified,
-              role: 'user',
-              profile: {
-                firstName: 'User',
-                lastName: ''
-              },
-              isFirebaseOnly: true
-            };
-            setUser(basicUser);
-            setError('Backend service temporarily unavailable. Some features may be limited.');
-            setLoading(false);
-            return;
+          let userData = null;
+          
+          // Try backend first if available
+          if (backendAvailable) {
+            try {
+              console.log('🔄 Attempting backend login...');
+              const response = await axios.post(
+                `${BACKEND_URL}/api/auth/login`, 
+                { idToken }, 
+                {
+                  timeout: 10000,
+                  headers: {
+                    'Content-Type': 'application/json'
+                  }
+                }
+              );
+              userData = response.data.user;
+              console.log('✅ Backend login successful:', userData.role);
+            } catch (backendError) {
+              console.warn('⚠️ Backend login failed, trying Firestore fallback:', backendError.message);
+            }
           }
           
-          // Try to login with backend using authApiCall helper
-          console.log('🔄 Attempting backend login...');
-          const userData = await authApiCall('POST', '/api/auth/login', { idToken });
+          // If backend failed or unavailable, try Firestore
+          if (!userData) {
+            userData = await getFirestoreUser(firebaseUser.uid);
+            
+            if (!userData) {
+              throw new Error('User profile not found');
+            }
+            
+            console.log('✅ Firestore login successful:', userData.role);
+          }
           
-          console.log('✅ Backend login successful:', userData.user.role);
-          setUser(userData.user);
+          setUser(userData);
           setError('');
         } catch (error) {
-          console.error('❌ Auth state error:', {
-            message: error.response?.data?.error || error.message,
-            status: error.response?.status,
-            data: error.response?.data
-          });
+          console.error('❌ Auth state error:', error.message);
           
-          // Handle specific error cases
-          if (error.response?.status === 404) {
-            // User profile doesn't exist in backend yet
+          if (error.message.includes('not found')) {
             console.log('📝 User profile not found, needs registration completion');
             setError('Account created but profile not found. Please complete registration or contact support.');
             setUser(null);
             
-            // Auto-sign out user if they don't have a backend profile
-            console.log('👋 Auto-signing out user without backend profile...');
+            console.log('👋 Auto-signing out user without profile...');
             await signOut(auth);
-          } else if (error.response?.data?.needsVerification) {
-            setError('Please verify your email before logging in.');
-            setUser(null);
-          } else if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
-            console.warn('🌐 Backend connection failed, using Firebase-only mode');
-            const basicUser = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              emailVerified: firebaseUser.emailVerified,
-              role: 'user',
-              profile: {
-                firstName: 'User',
-                lastName: ''
-              },
-              isFirebaseOnly: true
-            };
-            setUser(basicUser);
-            setError('Backend service temporarily unavailable. Some features may be limited.');
           } else {
             setError('Authentication failed. Please try logging in again.');
             setUser(null);
@@ -282,7 +288,7 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, [isRegistering, backendAvailable]);
 
-  // Enhanced login function with better error handling
+  // Enhanced login function with Firestore fallback
   const login = async (email, password, expectedRole = null) => {
     try {
       setError('');
@@ -297,35 +303,44 @@ export const AuthProvider = ({ children }) => {
       const idToken = await userCredential.user.getIdToken(true);
       console.log('🔑 ID Token obtained');
       
-      // 3. Check backend health first
-      if (!backendAvailable) {
-        console.warn('⚠️ Backend unavailable, proceeding with Firebase-only authentication');
-        const basicUser = {
-          uid: userCredential.user.uid,
-          email: userCredential.user.email,
-          emailVerified: userCredential.user.emailVerified,
-          role: expectedRole || 'user',
-          profile: {
-            firstName: 'User',
-            lastName: ''
-          },
-          isFirebaseOnly: true
-        };
-        setUser(basicUser);
-        return { user: basicUser, isFirebaseOnly: true };
+      let userData = null;
+      
+      // 3. Try backend first if available
+      if (backendAvailable) {
+        try {
+          console.log('🔄 Sending login request to backend...');
+          const response = await axios.post(
+            `${BACKEND_URL}/api/auth/login`, 
+            { idToken }, 
+            {
+              timeout: 10000,
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          userData = response.data.user;
+          console.log('✅ Backend login successful, user role:', userData.role);
+        } catch (backendError) {
+          console.warn('⚠️ Backend login failed, trying Firestore fallback:', backendError.message);
+        }
       }
       
-      // 4. Login with backend using the authApiCall helper
-      console.log('🔄 Sending login request to backend...');
-      const userData = await authApiCall('POST', '/api/auth/login', { idToken });
-
-      console.log('✅ Backend login response received');
-      console.log('✅ Backend login successful, user role:', userData.user.role);
+      // 4. If backend failed or unavailable, try Firestore
+      if (!userData) {
+        userData = await getFirestoreUser(userCredential.user.uid);
+        
+        if (!userData) {
+          throw new Error('User profile not found. Please complete registration.');
+        }
+        
+        console.log('✅ Firestore login successful, user role:', userData.role);
+      }
 
       // Validate role if expectedRole is provided
-      if (expectedRole && userData.user.role !== expectedRole) {
+      if (expectedRole && userData.role !== expectedRole) {
         await signOut(auth);
-        throw new Error(`Please use the ${userData.user.role} login page to access your account.`);
+        throw new Error(`Please use the ${userData.role} login page to access your account.`);
       }
 
       // Check email verification
@@ -334,14 +349,12 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Please verify your email before logging in. Check your inbox for the verification link.');
       }
 
-      setUser(userData.user);
-      return { user: userData.user, isFirebaseOnly: false };
+      setUser(userData);
+      return { user: userData, isFirebaseOnly: !backendAvailable };
     } catch (error) {
       console.error('❌ Login error details:', {
         code: error.code,
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data
+        message: error.message
       });
       
       let errorMessage = 'Login failed. Please try again.';
@@ -367,12 +380,7 @@ export const AuthProvider = ({ children }) => {
           errorMessage = 'Network error. Please check your connection.';
           break;
         default:
-          // Use backend or custom error message
-          if (error.response?.data?.error) {
-            errorMessage = error.response.data.error;
-          } else if (error.message) {
-            errorMessage = error.message;
-          }
+          errorMessage = error.message;
       }
       
       setError(errorMessage);
@@ -399,6 +407,7 @@ export const AuthProvider = ({ children }) => {
     return await login(email, password, 'admin');
   };
 
+  // Enhanced register function with Firestore fallback
   const register = async (email, password, role, profile) => {
     try {
       setError('');
@@ -437,7 +446,6 @@ export const AuthProvider = ({ children }) => {
       if (role === 'institution' && profile.institutionId) {
         console.log('🏫 Setting up institution admin for:', profile.institutionId);
         
-        // Verify the institution exists and get its name
         const institutionDoc = await getDoc(doc(db, 'institutions', profile.institutionId));
         if (!institutionDoc.exists()) {
           throw new Error('Selected institution not found');
@@ -445,7 +453,6 @@ export const AuthProvider = ({ children }) => {
         
         const institutionData = institutionDoc.data();
         
-        // Add admin to institution
         await updateDoc(doc(db, 'institutions', profile.institutionId), {
           adminId: user.uid,
           adminEmail: email,
@@ -453,12 +460,10 @@ export const AuthProvider = ({ children }) => {
         });
         
         console.log('✅ Institution admin setup completed');
-        
-        // Add institution name to profile
         profile.institutionName = institutionData.name;
       }
 
-      // 5. Prepare profile data for backend
+      // 5. Prepare profile data
       const profileData = {
         firstName: profile.firstName,
         lastName: profile.lastName,
@@ -478,33 +483,46 @@ export const AuthProvider = ({ children }) => {
         })
       };
 
-      console.log('📝 Creating user profile in backend...', profileData);
-
-      // 6. Check backend connection before creating profile
-      if (!backendAvailable) {
-        throw new Error('Backend service unavailable. Please try again later.');
+      let backendSuccess = false;
+      
+      // 6. Try backend first if available
+      if (backendAvailable) {
+        try {
+          console.log('🔄 Attempting backend profile creation...');
+          await axios.post(
+            `${BACKEND_URL}/api/auth/create-profile`, 
+            {
+              uid: user.uid,
+              email: user.email,
+              role,
+              profile: profileData
+            }, 
+            {
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 10000
+            }
+          );
+          backendSuccess = true;
+          console.log('✅ Backend profile created');
+        } catch (backendError) {
+          console.warn('⚠️ Backend profile creation failed, using Firestore fallback:', backendError.message);
+        }
       }
-
-      // 7. Create user profile in backend using authApiCall
-      console.log('🔄 Sending profile creation request to backend...');
-      const response = await authApiCall('POST', '/api/auth/create-profile', {
-        uid: user.uid,
-        email: user.email,
-        role,
-        profile: profileData
-      });
-
-      console.log('✅ Backend profile created:', response);
-
+      
+      // 7. Always create Firestore profile as fallback
+      console.log('📝 Creating Firestore profile...');
+      const userProfile = await createFirestoreProfile(user.uid, user.email, role, profileData);
+      
       // 8. Sign out user to await verification
       console.log('👋 Signing out user...');
       await signOut(auth);
       
       return {
-        ...response,
         uid: user.uid,
         email: user.email,
         emailSent: true,
+        backendSuccess,
+        isFirebaseOnly: !backendSuccess,
         message: 'Registration successful! Please verify your email before logging in.'
       };
       
@@ -530,8 +548,7 @@ export const AuthProvider = ({ children }) => {
           errorMessage = 'Network error. Please check your connection and try again.';
           break;
         default:
-          // Use backend error message if available
-          errorMessage = error.response?.data?.error || error.message || 'Registration failed';
+          errorMessage = error.message || 'Registration failed';
       }
       
       setError(errorMessage);
@@ -549,18 +566,18 @@ export const AuthProvider = ({ children }) => {
       
       console.log('📧 Resending verification email to:', email);
       
-      const response = await authApiCall('POST', '/api/auth/resend-verification', { email });
+      // For now, we'll handle this client-side since backend might be down
+      const user = await auth.getUserByEmail(email);
+      await sendEmailVerification(user);
       
-      console.log('✅ Resend verification response:', response);
-      
-      if (response.verificationLink) {
-        console.log('🔗 New Verification Link (Development):', response.verificationLink);
-      }
-      
-      return response;
+      console.log('✅ Verification email sent');
+      return { 
+        message: 'Verification email sent successfully!',
+        emailSent: true
+      };
     } catch (error) {
       console.error('❌ Resend verification error:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to resend verification email.';
+      const errorMessage = error.message || 'Failed to resend verification email.';
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -641,7 +658,7 @@ export const AuthProvider = ({ children }) => {
     backendAvailable,
     
     // Actions
-    login, // Generic login
+    login,
     loginAsStudent,
     loginAsInstitution,
     loginAsCompany,
@@ -659,7 +676,6 @@ export const AuthProvider = ({ children }) => {
     getInstitutionsForRegistration,
     getDashboardPath,
     testBackendConnection,
-    testBackendEndpoints,
     setBackendAvailable
   };
 
